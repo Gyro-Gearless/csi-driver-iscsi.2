@@ -17,6 +17,8 @@ all: build
 
 include release-tools/build.make
 
+REGISTRY_NAME=d504
+
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 export GOPATH GOBIN
