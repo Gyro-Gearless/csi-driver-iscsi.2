@@ -244,6 +244,7 @@ func Connect(c Connector) (string, error) {
 
 // Connect attempts to connect a volume to this node using the provided Connector info
 func (c *Connector) Connect() (string, error) {
+	debug.Printf("+++ Connector::Connect %+v\n", c)
 	if c.RetryCount == 0 {
 		c.RetryCount = 10
 	}
@@ -257,11 +258,13 @@ func (c *Connector) Connect() (string, error) {
 	}
 
 	// make sure our iface exists and extract the transport type
+	debug.Printf("Using interface: %s", iFace)
 	out, err := ShowInterface(iFace)
 	if err != nil {
 		return "", err
 	}
 	iscsiTransport := extractTransportName(out)
+	debug.Printf("Transport is %s", iscsiTransport)
 
 	var lastErr error
 	var devicePaths []string
@@ -369,7 +372,8 @@ func (c *Connector) connectTarget(targetIqn string, target string, iFace string,
 }
 
 func (c *Connector) discoverTarget(targetIqn string, iFace string, portal string) error {
-	if c.DoDiscovery {
+
+	if true || c.DoDiscovery {
 		// build discoverydb and discover iscsi target
 		if err := Discoverydb(portal, iFace, c.DiscoverySecrets, c.DoCHAPDiscovery); err != nil {
 			debug.Printf("Error in discovery of the target: %s\n", err.Error())

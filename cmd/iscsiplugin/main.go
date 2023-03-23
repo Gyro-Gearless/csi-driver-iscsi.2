@@ -20,7 +20,8 @@ import (
 	"flag"
 	"os"
 
-	"github.com/kubernetes-csi/csi-driver-iscsi/pkg/iscsi"
+	iscsi "github.com/kubernetes-csi/csi-driver-iscsi/pkg/iscsi"
+	iscsiLib "github.com/kubernetes-csi/csi-lib-iscsi/iscsi"
 	klog "k8s.io/klog/v2"
 )
 
@@ -36,6 +37,8 @@ func init() {
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
+	iscsiLib.EnableDebugLogging(os.Stdout)
+	klog.Infof("+++ HERE WE GO _______.oOo._\\|/_.oOo._______________ %d", 6*7)
 	handle()
 	os.Exit(0)
 }
