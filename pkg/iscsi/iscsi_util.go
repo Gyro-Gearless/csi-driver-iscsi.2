@@ -19,6 +19,7 @@ package iscsi
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	iscsiLib "github.com/kubernetes-csi/csi-lib-iscsi/iscsi"
 	"google.golang.org/grpc/codes"
@@ -84,15 +85,25 @@ func (util *ISCSIUtil) AttachDisk(b iscsiDiskMounter) (string, error) {
 }
 
 func (util *ISCSIUtil) DetachDisk(c iscsiDiskUnmounter, targetPath string) error {
-	_, cnt, err := mount.GetDeviceNameFromMount(c.mounter, targetPath)
+
+	// Kludge(2)
+	// TODO read prefix from config map
+	bogusPrefix := "/var/snap/microk8s/common"
+	targetPathCooked := strings.TrimPrefix(targetPath, bogusPrefix)
+	if targetPath != targetPathCooked {
+		klog.Infof("DetachDisk(): Stripping prefix from target_path: %s -> %s", targetPath, targetPathCooked)
+	}
+
+	_, cnt, err := mount.GetDeviceNameFromMount(c.mounter, targetPathCooked)
+
 	if err != nil {
-		klog.Errorf("iscsi detach disk: failed to get device from mnt: %s\nError: %v", targetPath, err)
+		klog.Errorf("iscsi detach disk: failed to get device from mnt: %s\nError: %v", targetPathCooked, err)
 		return err
 	}
-	if pathExists, pathErr := mount.PathExists(targetPath); pathErr != nil {
+	if pathExists, pathErr := mount.PathExists(targetPathCooked); pathErr != nil {
 		return fmt.Errorf("error checking if path exists: %v", pathErr)
 	} else if !pathExists {
-		klog.Warningf("warning: Unmount skipped because path does not exist: %v", targetPath)
+		klog.Warningf("warning: Unmount skipped because path does not exist: %v", targetPathCooked)
 		return nil
 	}
 	iscsiInfoPath := getIscsiInfoPath(c.VolName)
@@ -105,8 +116,8 @@ func (util *ISCSIUtil) DetachDisk(c iscsiDiskUnmounter, targetPath string) error
 		}
 		return status.Error(codes.Internal, err.Error())
 	}
-	if err = c.mounter.Unmount(targetPath); err != nil {
-		klog.Errorf("iscsi detach disk: failed to unmount: %s\nError: %v", targetPath, err)
+	if err = c.mounter.Unmount(targetPathCooked); err != nil {
+		klog.Errorf("iscsi detach disk: failed to unmount: %s\nError: %v", targetPathCooked, err)
 		return err
 	}
 	cnt--
@@ -118,12 +129,12 @@ func (util *ISCSIUtil) DetachDisk(c iscsiDiskUnmounter, targetPath string) error
 	klog.Info("detaching ISCSI device")
 	err = connector.DisconnectVolume()
 	if err != nil {
-		klog.Errorf("iscsi detach disk: failed to get iscsi config from path %s Error: %v", targetPath, err)
+		klog.Errorf("iscsi detach disk: failed to get iscsi config from path %s Error: %v", targetPathCooked, err)
 		return err
 	}
 
 	iscsiLib.Disconnect(connector.TargetIqn, connector.TargetPortals)
-	if err := os.RemoveAll(targetPath); err != nil {
+	if err := os.RemoveAll(targetPathCooked); err != nil {
 		klog.Errorf("iscsi: failed to remove mount path Error: %v", err)
 	}
 	err = os.Remove(iscsiInfoPath)

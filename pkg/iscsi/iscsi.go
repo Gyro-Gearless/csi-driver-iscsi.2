@@ -24,6 +24,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	iscsiLib "github.com/kubernetes-csi/csi-lib-iscsi/iscsi"
+	klog "k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/exec"
 	"k8s.io/utils/mount"
@@ -77,6 +78,11 @@ func getISCSIInfo(req *csi.NodePublishVolumeRequest) (*iscsiDisk, error) {
 		chapSession = true
 	}
 
+	doDiscovery := false
+	if req.GetVolumeContext()["do_discovery"] == "true" {
+		doDiscovery = true
+	}
+
 	var lunVal int32
 	if lun != "" {
 		l, err := strconv.Atoi(lun)
@@ -97,6 +103,7 @@ func getISCSIInfo(req *csi.NodePublishVolumeRequest) (*iscsiDisk, error) {
 		sessionSecret:   sessionSecret,
 		discoverySecret: discoverySecret,
 		InitiatorName:   initiatorName,
+		discovery:       doDiscovery,
 	}
 
 	return iscsiDisk, nil
@@ -111,6 +118,7 @@ func buildISCSIConnector(iscsiInfo *iscsiDisk) *iscsiLib.Connector {
 		TargetIqn:     iscsiInfo.Iqn,
 		TargetPortals: iscsiInfo.Portals,
 		Lun:           iscsiInfo.lun,
+		DoDiscovery:   iscsiInfo.discovery,
 	}
 
 	if iscsiInfo.sessionSecret != (iscsiLib.Secrets{}) {
@@ -128,6 +136,15 @@ func getISCSIDiskMounter(iscsiInfo *iscsiDisk, req *csi.NodePublishVolumeRequest
 	fsType := req.GetVolumeCapability().GetMount().GetFsType()
 	mountOptions := req.GetVolumeCapability().GetMount().GetMountFlags()
 
+	// Kludge(1)
+	// TODO read prefix from config map
+	bogusPrefix := "/var/snap/microk8s/common"
+	targetPathRaw := req.GetTargetPath()
+	targetPathCooked := strings.TrimPrefix(targetPathRaw, bogusPrefix)
+	if targetPathRaw != targetPathCooked {
+		klog.Infof("Stripping prefix from target_path: %s -> %s", targetPathRaw, targetPathCooked)
+	}
+
 	diskMounter := &iscsiDiskMounter{
 		iscsiDisk:    iscsiInfo,
 		fsType:       fsType,
@@ -135,7 +152,7 @@ func getISCSIDiskMounter(iscsiInfo *iscsiDisk, req *csi.NodePublishVolumeRequest
 		mountOptions: mountOptions,
 		mounter:      &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: exec.New()},
 		exec:         exec.New(),
-		targetPath:   req.GetTargetPath(),
+		targetPath:   targetPathCooked,
 		deviceUtil:   util.NewDeviceHandler(util.NewIOHandler()),
 		connector:    buildISCSIConnector(iscsiInfo),
 	}
@@ -233,6 +250,7 @@ type iscsiDisk struct {
 	discoverySecret iscsiLib.Secrets
 	InitiatorName   string
 	VolName         string
+	discovery       bool
 }
 
 type iscsiDiskMounter struct {
